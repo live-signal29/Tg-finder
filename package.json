@@ -1,6 +1,6 @@
 {
-  "name": "telegram-niche-poster-vercel",
-  "version": "2.0.0",
+  "name": "tg-niche-poster",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": { "dev": "vercel dev" },

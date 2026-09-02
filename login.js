@@ -1,18 +1,17 @@
-// Run this ONCE on your own computer (NOT on Vercel).
-// It logs you into Telegram as a real user account and prints a
-// session string. Save that string as the TG_SESSION env variable
-// in Vercel. Never share this string with anyone — it is equivalent
-// to your Telegram login.
+// Run this ONCE on your own computer/phone (Termux), NOT on Vercel.
+// It logs into Telegram as a real user account and prints a session
+// string. Save that string as the TG_SESSION env variable in Vercel.
+// Never share this string with anyone — it is equivalent to your
+// Telegram login.
 
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import input from "input";
 
-// Get these from https://my.telegram.org -> API Development Tools
 const apiId = Number(process.env.TG_API_ID || "REPLACE_WITH_YOUR_API_ID");
 const apiHash = process.env.TG_API_HASH || "REPLACE_WITH_YOUR_API_HASH";
 
-const stringSession = new StringSession(""); // empty = start a new login
+const stringSession = new StringSession("");
 
 (async () => {
   const client = new TelegramClient(stringSession, apiId, apiHash, {
