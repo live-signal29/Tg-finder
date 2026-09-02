@@ -1,8 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Telegram Niche Poster</title><style>
 body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;background:#f4f6f8;margin:0;color:#17202a}.wrap{max-width:850px;margin:28px auto;padding:0 16px}.card{background:#fff;border:1px solid #e2e6ea;border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 3px 14px #0000000b}h1{margin:0 0 6px}h2{font-size:18px}label{display:block;font-weight:650;margin:10px 0 6px}input,textarea,button{font:inherit}input,textarea{width:100%;box-sizing:border-box;border:1px solid #ccd3da;border-radius:10px;padding:11px}textarea{min-height:120px;resize:vertical}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:180px}button{border:0;border-radius:10px;padding:11px 16px;cursor:pointer;font-weight:700}.primary{background:#111827;color:#fff}.danger{background:#b91c1c;color:#fff}.muted{color:#667085;font-size:14px}.pill{display:inline-block;padding:4px 9px;border-radius:999px;background:#eef2f6;font-size:12px}.target{border:1px solid #e4e7eb;border-radius:12px;padding:10px;margin:8px 0;display:flex;justify-content:space-between;gap:10px;align-items:center}.ok{color:#087f5b}.err{color:#b42318}.log{font-size:13px;border-top:1px solid #eee;padding:7px 0}
 </style></head><body><div class="wrap">
-<div class="card"><h1>🤖 Telegram Niche Poster</h1><div class="muted">START only when you want. Each approved target gets one post every 3 minutes.</div><p><span id="state" class="pill">STOPPED</span> <span id="bot"></span></p><button class="primary" onclick="checkBot()">Check Bot</button> <button class="primary" onclick="start()">▶ START</button> <button class="danger" onclick="stop()">■ STOP</button></div>
+<div class="card"><h1>🤖 Telegram Niche Poster</h1><div class="muted">START only when you want. Each approved target gets one post every 3 minutes.</div><p><span id="state" class="pill">STOPPED</span> <span id="countdown" class="pill" style="background:#eef;display:none"></span> <span id="bot"></span></p><button class="primary" onclick="checkBot()">Check Bot</button> <button class="primary" onclick="start()">▶ START</button> <button class="danger" onclick="stop()">■ STOP</button></div>
 <div class="card"><h2>⚙️ Niche & Post</h2><label>Niche keywords (comma separated)</label><input id="keywords" value="forex,trading,gold,xauusd,crypto"><label>Post text</label><textarea id="text">📊 Forex Market Update\n\nTrade responsibly. Always use proper risk management.</textarea></div>
+<div class="card"><h2>🔍 Group Search</h2><div class="muted">Sirf discovery ke liye — public groups/channels dhoondh kar dikhata hai. Koi bhi group add nahi hoga jab tak aap khud select na karein, aur bot ko wahan post karne ki permission alag se leni hogi (add/promote as admin).</div><div class="row"><div><label>Keyword</label><input id="searchQ" placeholder="forex trading gold"></div></div><button class="primary" onclick="searchGroups()">Search</button> <span id="searchState" class="muted"></span><div id="searchResults" style="margin-top:10px"></div><button class="primary" style="margin-top:8px" onclick="addSelectedFromSearch()">➕ Add Selected as Targets</button></div>
 <div class="card"><h2>➕ Approved target</h2><div class="muted">Add only groups/channels where your bot has permission to post.</div><div class="row"><div><label>Chat ID / @username</label><input id="chat" placeholder="@yourgroup"></div><div><label>Group name</label><input id="name" placeholder="Forex Traders Group"></div></div><label>Description / niche</label><input id="desc" placeholder="forex trading signals gold">r><button class="primary" onclick="addTarget()">Add Target</button></div>
 <div class="card"><h2>📋 Targets</h2><div id="targets"></div></div>
 <div class="card"><h2>📊 Activity</h2><div id="logs" class="muted">No activity yet.</div></div>
@@ -15,7 +16,106 @@ function addTarget(){const chat=$('chat').value.trim(),name=$('name').value.trim
 function removeTarget(i){db.targets.splice(i,1);db.index=0;save()}
 function render(){ $('state').textContent=running?'RUNNING':'STOPPED'; $('targets').innerHTML=db.targets.length?db.targets.map((t,i)=>`<div class="target"><div><b>${esc(t.name)}</b><br><span class="muted">${esc(t.chat)} · ${esc(t.desc)}</span></div><button onclick="removeTarget(${i})">Remove</button></div>`).join(''):'<div class="muted">No approved targets.</div>'; $('logs').innerHTML=db.logs.length?db.logs.slice(-20).reverse().map(l=>`<div class="log"><b>${esc(l.name)}</b> — ${l.ok?'<span class="ok">posted</span>':'<span class="err">failed</span>'} — ${new Date(l.at).toLocaleString()}${l.error?' — '+esc(l.error):''}</div>`).join(''):'No activity yet.'}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+let lastSearchResults = [];
+async function searchGroups(){
+  const q = $('searchQ').value.trim();
+  if(!q) return alert('Keyword daalein.');
+  $('searchState').textContent = 'Searching...';
+  $('searchResults').innerHTML = '';
+  try{
+    const r = await fetch('/api/search?q=' + encodeURIComponent(q));
+    const d = await r.json();
+    if(!d.ok){ $('searchState').textContent = 'Error: ' + d.error; return; }
+    lastSearchResults = d.groups || [];
+    $('searchState').textContent = lastSearchResults.length + ' results mile (max 15).';
+    renderSearchResults();
+  }catch(e){ $('searchState').textContent = 'Error: ' + e.message; }
+}
+function renderSearchResults(){
+  if(!lastSearchResults.length){ $('searchResults').innerHTML = '<div class="muted">Koi result nahi.</div>'; return; }
+  $('searchResults').innerHTML = lastSearchResults.map((g,i)=>`
+    <div class="target">
+      <div>
+        <label style="display:inline;font-weight:600"><input type="checkbox" class="srCheck" data-i="${i}" style="width:auto;margin-right:8px"> ${esc(g.title)}</label>
+        <br><span class="muted">${g.username?esc(g.username):'(no username)'} ${g.membersCount?'· '+g.membersCount+' members':''} ${g.isMegagroup?'· group':g.isBroadcast?'· channel':''}</span>
+        ${g.link?`<br><a href="${g.link}" target="_blank" class="muted">${g.link}</a>`:''}
+      </div>
+    </div>`).join('');
+}
+function addSelectedFromSearch(){
+  const checks = document.querySelectorAll('.srCheck:checked');
+  if(!checks.length) return alert('Pehle kuch groups select karein.');
+  let added = 0;
+  checks.forEach(c=>{
+    const g = lastSearchResults[Number(c.dataset.i)];
+    if(!g) return;
+    const chat = g.username || g.id;
+    if(db.targets.some(x=>x.chat===chat)) return;
+    db.targets.push({ chat, name: g.title, desc: '' });
+    added++;
+  });
+  save();
+  alert(added + ' targets add ho gaye. Note: bot ko in groups mein post karne ki permission (member/admin as needed) alag se deni hogi.');
+}
 async function checkBot(){try{const r=await fetch('/api/check');const d=await r.json();$('bot').textContent=d.ok?`Connected: @${d.bot.username}`:`Error: ${d.error}`;}catch(e){$('bot').textContent='Connection error';}}
-async function tick(){if(!running||!db.targets.length){stop();return}const t=db.targets[db.index%db.targets.length];db.index=(db.index+1)%db.targets.length;const text=$('text').value.trim();try{const r=await fetch('/api/post',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chatId:t.chat,text})});const d=await r.json();db.logs.push({name:t.name,ok:!!d.ok,error:d.error||'',at:new Date().toISOString()});db.logs=db.logs.slice(-100);save();}catch(e){db.logs.push({name:t.name,ok:false,error:e.message,at:new Date().toISOString()});save()} if(running) timer=setTimeout(tick,180000)}
-function start(){if(running)return;if(!db.targets.length)return alert('Add at least one approved target first.');running=true;render();tick()} function stop(){running=false;if(timer)clearTimeout(timer);timer=null;render()} render();checkBot();
+const CYCLE_MS = 180000; // 3 minutes between posts
+const MAX_PER_RUN = 15;  // auto-stop after 15 groups
+let runCount = 0;
+let countdownTimer = null;
+
+function showCountdown(seconds){
+  const el = $('countdown');
+  el.style.display = 'inline-block';
+  let remaining = seconds;
+  el.textContent = 'Next in ' + remaining + 's';
+  if(countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(()=>{
+    remaining--;
+    if(remaining <= 0 || !running){ clearInterval(countdownTimer); el.style.display='none'; return; }
+    el.textContent = 'Next in ' + remaining + 's';
+  }, 1000);
+}
+
+async function tick(){
+  if(!running || !db.targets.length || runCount >= MAX_PER_RUN){ stop(); return; }
+  const t = db.targets[db.index % db.targets.length];
+  db.index = (db.index + 1) % db.targets.length;
+  runCount++;
+  const text = $('text').value.trim();
+  try{
+    const r = await fetch('/api/post',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chatId:t.chat,text})});
+    const d = await r.json();
+    db.logs.push({name:t.name, ok:!!d.ok, error:d.error||'', at:new Date().toISOString()});
+    db.logs = db.logs.slice(-100);
+    save();
+  }catch(e){
+    db.logs.push({name:t.name, ok:false, error:e.message, at:new Date().toISOString()});
+    save();
+  }
+  if(running && runCount < MAX_PER_RUN){
+    showCountdown(CYCLE_MS/1000);
+    timer = setTimeout(tick, CYCLE_MS);
+  } else {
+    stop();
+  }
+}
+
+function start(){
+  if(running) return;
+  if(!db.targets.length) return alert('Add at least one approved target first.');
+  running = true;
+  runCount = 0;
+  render();
+  tick();
+}
+function stop(){
+  running = false;
+  runCount = 0;
+  if(timer) clearTimeout(timer);
+  if(countdownTimer) clearInterval(countdownTimer);
+  timer = null; countdownTimer = null;
+  $('countdown').style.display = 'none';
+  render();
+}
+render(); checkBot();
 </script></body></html>
