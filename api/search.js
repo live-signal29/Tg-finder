@@ -30,12 +30,10 @@ function isRealGroup(c) {
   if (!c) return false;
   const cls = c.className || "";
   if (cls === "Chat") {
-    // Basic (non-megagroup) group chat — always a real group.
     if (c.deactivated) return false;
     return true;
   }
   if (cls === "Channel") {
-    // Only keep supergroups (megagroup=true). Exclude broadcast channels.
     if (c.broadcast) return false;
     if (!c.megagroup) return false;
     if (c.left === true && c.username == null) return false;
@@ -73,29 +71,56 @@ export default async function handler(req, res) {
 
   const collected = new Map();
 
+  // Source 1: contacts.search (title/username matches) — single call, higher limit.
   try {
-    const r1 = await client.invoke(new Api.contacts.Search({ q: query, limit: 25 }));
+    const r1 = await client.invoke(new Api.contacts.Search({ q: query, limit: 40 }));
     (r1.chats || []).filter(isRealGroup).forEach((c) => collected.set(c.id.toString(), c));
   } catch (e) {
-    // ignore, try the other source
+    // ignore
   }
 
-  try {
-    const r2 = await client.invoke(
-      new Api.messages.SearchGlobal({
-        q: query,
-        filter: new Api.InputMessagesFilterEmpty(),
-        minDate: 0,
-        maxDate: 0,
-        offsetRate: 0,
-        offsetPeer: new Api.InputPeerEmpty(),
-        offsetId: 0,
-        limit: 40,
-      })
-    );
+  // Source 2: messages.searchGlobal — paginate a few pages to try to reach 15+ groups.
+  let offsetRate = 0;
+  let offsetPeer = new Api.InputPeerEmpty();
+  let offsetId = 0;
+  const MAX_PAGES = 6;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    if (collected.size >= 15) break;
+    let r2;
+    try {
+      r2 = await client.invoke(
+        new Api.messages.SearchGlobal({
+          q: query,
+          filter: new Api.InputMessagesFilterEmpty(),
+          minDate: 0,
+          maxDate: 0,
+          offsetRate,
+          offsetPeer,
+          offsetId,
+          limit: 40,
+        })
+      );
+    } catch (e) {
+      break; // stop paginating on any error, keep whatever we have
+    }
+
+    const before = collected.size;
     (r2.chats || []).filter(isRealGroup).forEach((c) => collected.set(c.id.toString(), c));
-  } catch (e) {
-    // ignore
+
+    const msgs = r2.messages || [];
+    if (!msgs.length) break; // no more results
+
+    const last = msgs[msgs.length - 1];
+    offsetId = last.id || 0;
+    offsetRate = r2.nextRate ?? last.date ?? offsetRate;
+    try {
+      offsetPeer = await client.getInputEntity(last.peerId);
+    } catch (e) {
+      break; // can't paginate further without a valid peer
+    }
+
+    if (collected.size === before) break; // this page added nothing new, stop
   }
 
   if (collected.size === 0) {
@@ -103,13 +128,13 @@ export default async function handler(req, res) {
       ok: true,
       count: 0,
       groups: [],
-      note: "Koi public GROUP nahi mila is keyword ke liye (channels ko is search se exclude kiya gaya hai). Doosra keyword try karein.",
+      note: "Koi public GROUP nahi mila is keyword ke liye (channels exclude kiye gaye hain). Doosra keyword try karein.",
     });
   }
 
   const groups = Array.from(collected.values())
     .sort((a, b) => (b.participantsCount || 0) - (a.participantsCount || 0))
-    .slice(0, 15)
+    .slice(0, 40)
     .map(toGroupObj);
 
   return res.status(200).json({ ok: true, count: groups.length, groups });
