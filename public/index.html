@@ -24,6 +24,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .diag{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .step{font-size:13px;font-weight:700;color:#475467;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
 .imgprev{max-width:160px;border-radius:8px;margin-top:8px;display:block}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 </style></head><body><div class="wrap">
 
 <div class="card">
@@ -35,17 +36,28 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <div class="card">
   <div class="step">Step 1 — Find groups</div>
   <h2>🔍 Group Search</h2>
-  <div class="muted">Finds public <b>GROUPS</b> only (chats with "members") — broadcast channels ("subscribers") are excluded automatically.</div>
+  <div class="muted">Finds public <b>GROUPS</b> only (chats with "members") — broadcast channels ("subscribers") are excluded automatically. Results from every search you run keep piling up here until you clear them yourself.</div>
   <button class="secondary" onclick="testMT()">Test MTProto Session</button> <span id="mtState" class="muted"></span>
-  <div class="row" style="margin-top:10px"><div><label>Keyword</label><input id="searchQ" placeholder="forex trading gold"></div></div>
-  <button class="primary" onclick="searchGroups()" id="searchBtn">Search</button> <span id="searchState" class="muted"></span>
-  <div id="searchResults" style="margin-top:10px"></div>
+  <div class="row" style="margin-top:10px"><div><label>Keyword / Niche</label><input id="searchQ" placeholder="forex trading gold"></div></div>
+  <div class="toolbar">
+    <button class="primary" onclick="startSearch()" id="startSearchBtn">▶ Start Searching</button>
+    <button class="danger" onclick="stopSearch()" id="stopSearchBtn">■ Stop</button>
+    <span id="searchTimerPill" class="pill" style="display:none"></span>
+  </div>
+  <div id="searchState" class="muted"></div>
+  <div class="toolbar" style="margin-top:10px">
+    <span class="muted" id="resultCount">0 groups found so far.</span>
+    <button class="secondary" onclick="selectAllResults(true)">Select All</button>
+    <button class="secondary" onclick="selectAllResults(false)">Deselect All</button>
+    <button class="danger" onclick="clearAllResults()">Clear All Results</button>
+  </div>
+  <div id="searchResults" style="margin-top:6px"></div>
 </div>
 
 <div class="card">
   <div class="step">Step 2 — Join the ones you choose</div>
   <h2>➕ Join Selected Groups</h2>
-  <div class="muted">Nothing is joined automatically. Tick the boxes above for the groups you want, then click below — it joins them one by one (with a short delay to avoid Telegram limits) and adds them to your Targets list.</div>
+  <div class="muted">Nothing is joined automatically. Tick boxes above, then click below — it joins one by one (with a short delay to avoid Telegram limits) and adds them to your Targets list.</div>
   <button class="primary" onclick="joinSelected()" id="joinBtn">Join Selected &amp; Add as Targets</button>
   <span id="joinState" class="muted"></span>
 </div>
@@ -78,55 +90,54 @@ Trade responsibly. Always use proper risk management.</textarea>
   </div>
 </div>
 
+<div class="card"><h2>📋 Targets</h2><div id="targets"></div></div>
+
 <div class="card">
-  <h2>➕ Manually Approve a Target</h2>
-  <div class="muted">Add only groups/channels where your bot already has permission to post.</div>
-  <div class="row">
-    <div><label>Chat ID / @username</label><input id="chat" placeholder="@yourgroup"></div>
-    <div><label>Group name</label><input id="name" placeholder="Forex Traders Group"></div>
+  <div class="toolbar" style="justify-content:space-between">
+    <h2 style="margin:0">🕘 History</h2>
+    <button class="danger" onclick="clearHistory()">Clear History</button>
   </div>
-  <label>Description / niche</label>
-  <input id="desc" placeholder="forex trading signals gold">
-  <button class="primary" style="margin-top:10px" onclick="addTarget()">Add Target</button>
+  <div id="history" class="muted">No history yet.</div>
 </div>
 
-<div class="card"><h2>📋 Targets</h2><div id="targets"></div></div>
-<div class="card"><h2>📊 Activity</h2><div id="logs" class="muted">No activity yet.</div></div>
 <div class="card"><h2>🤖 Bot</h2><button class="secondary" onclick="checkBot()">Check Bot</button> <span id="botState" class="muted"></span></div>
 
 </div><script>
-const KEY='tg_niche_poster_v4';
-let db=JSON.parse(localStorage.getItem(KEY)||'{"targets":[],"logs":[],"index":0}');
-let running=false, timer=null, runCount=0, countdownTimer=null, searchTimer=null;
+const KEY='tg_niche_poster_v5';
+let db=JSON.parse(localStorage.getItem(KEY)||'{"targets":[],"history":[],"index":0}');
+let running=false, timer=null, runCount=0, countdownTimer=null;
+let searching=false, searchLoopTimer=null, searchElapsed=0, searchElapsedTimer=null;
 const CYCLE_MS = 180000;
 const MAX_PER_RUN = 15;
+const SEARCH_POLL_MS = 6000;
 const $=id=>document.getElementById(id);
-let lastSearchResults = [];
+let allFoundGroups = []; // persists across searches until user clears
 let currentImageBase64 = null;
 
 function save(){ localStorage.setItem(KEY, JSON.stringify(db)); render(); }
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function addHistory(type, text, ok){
+  db.history.push({type, text, ok, at: new Date().toISOString()});
+  db.history = db.history.slice(-300);
+  save();
+}
+function clearHistory(){
+  if(!confirm('Poori history delete karni hai?')) return;
+  db.history = [];
+  save();
+}
 
 function render(){
   $('state').textContent = running ? 'RUNNING' : 'STOPPED';
   $('targets').innerHTML = db.targets.length
     ? db.targets.map((t,i)=>`<div class="target"><div><b>${esc(t.name)}</b><br><span class="muted">${esc(t.chat)} · ${esc(t.desc||'')}</span></div><button class="secondary" onclick="removeTarget(${i})">Remove</button></div>`).join('')
     : '<div class="muted">No approved targets yet.</div>';
-  $('logs').innerHTML = db.logs.length
-    ? db.logs.slice(-20).reverse().map(l=>`<div class="log"><b>${esc(l.name)}</b> — ${l.ok?'<span class="ok">posted</span>':'<span class="err">failed</span>'} — ${new Date(l.at).toLocaleString()}${l.error?' — '+esc(l.error):''}</div>`).join('')
-    : 'No activity yet.';
+  $('history').innerHTML = db.history.length
+    ? db.history.slice().reverse().map(h=>`<div class="log"><b>${esc(h.type)}</b> — ${h.ok===false?'<span class="err">'+esc(h.text)+'</span>':'<span class="ok">'+esc(h.text)+'</span>'} — ${new Date(h.at).toLocaleString()}</div>`).join('')
+    : 'No history yet.';
 }
 
 function removeTarget(i){ db.targets.splice(i,1); db.index=0; save(); }
-
-function addTarget(){
-  const chat=$('chat').value.trim(), name=$('name').value.trim(), desc=$('desc').value.trim();
-  if(!chat||!name) return alert('Chat ID/@username and group name required.');
-  if(db.targets.some(x=>x.chat===chat)) return alert('Already added.');
-  db.targets.push({chat,name,desc});
-  $('chat').value=$('name').value=$('desc').value='';
-  save();
-}
 
 // ---------- Diagnostics ----------
 async function runDiagnostics(){
@@ -167,65 +178,106 @@ async function testMT(){
   }catch(e){ $('mtState').textContent = 'Error: ' + e.message; }
 }
 
-// ---------- Search (groups only, with live timer) ----------
-async function searchGroups(){
-  const q = $('searchQ').value.trim();
-  if(!q) return alert('Keyword daalein.');
-  $('searchResults').innerHTML = '';
-  $('searchBtn').disabled = true;
-  let elapsed = 0;
-  $('searchState').textContent = 'Searching... 0s';
-  if(searchTimer) clearInterval(searchTimer);
-  searchTimer = setInterval(()=>{ elapsed++; $('searchState').textContent = 'Searching... ' + elapsed + 's'; }, 1000);
-  try{
-    const r = await fetch('/api/search?q=' + encodeURIComponent(q));
-    const d = await r.json();
-    clearInterval(searchTimer);
-    if(!r.ok || !d.ok){ $('searchState').textContent = 'Error: ' + (d.error || ('HTTP '+r.status)); return; }
-    lastSearchResults = d.groups || [];
-    $('searchState').textContent = lastSearchResults.length
-      ? (lastSearchResults.length + ' groups mile (max 15). Select karke "Join Selected" dabayein.')
-      : (d.note || 'Koi group nahi mila.');
-    renderSearchResults();
-  }catch(e){
-    clearInterval(searchTimer);
-    $('searchState').textContent = 'Error: ' + e.message;
-  }finally{
-    $('searchBtn').disabled = false;
-  }
-}
-
+// ---------- Continuous search (Start/Stop) with accumulation ----------
 function renderSearchResults(){
-  if(!lastSearchResults.length){ $('searchResults').innerHTML = '<div class="muted">Koi result nahi.</div>'; return; }
-  $('searchResults').innerHTML = lastSearchResults.map((g,i)=>`
+  if(!allFoundGroups.length){ $('searchResults').innerHTML = '<div class="muted">Koi result nahi abhi tak.</div>'; $('resultCount').textContent = '0 groups found so far.'; return; }
+  $('resultCount').textContent = allFoundGroups.length + ' groups found so far.';
+  $('searchResults').innerHTML = allFoundGroups.map((g,i)=>`
     <div class="target">
       <div>
-        <label style="display:inline;font-weight:600"><input type="checkbox" class="srCheck" data-i="${i}" style="width:auto;margin-right:8px"> ${esc(g.title)}</label>
+        <label style="display:inline;font-weight:600"><input type="checkbox" class="srCheck" data-i="${i}" ${g._checked?'checked':''} onchange="toggleCheck(${i},this.checked)" style="width:auto;margin-right:8px"> ${esc(g.title)}</label>
         <br><span class="muted">${g.username?esc(g.username):'(no username)'} ${g.membersCount?'· '+g.membersCount+' members':''}</span>
         ${g.link?`<br><a href="${g.link}" target="_blank" class="muted">${g.link}</a>`:''}
       </div>
     </div>`).join('');
 }
+function toggleCheck(i, val){ allFoundGroups[i]._checked = val; }
+function selectAllResults(val){ allFoundGroups.forEach(g=>g._checked=val); renderSearchResults(); }
+function clearAllResults(){
+  if(!confirm('Sab search results hata dein?')) return;
+  allFoundGroups = [];
+  renderSearchResults();
+}
+
+function mergeResults(newGroups){
+  let added = 0;
+  newGroups.forEach(g=>{
+    const key = g.username || g.id;
+    if(allFoundGroups.some(x=>(x.username||x.id)===key)) return;
+    allFoundGroups.push({...g, _checked:false});
+    added++;
+  });
+  return added;
+}
+
+async function runOneSearchPass(q){
+  try{
+    const r = await fetch('/api/search?q=' + encodeURIComponent(q));
+    const d = await r.json();
+    if(!r.ok || !d.ok){ return {error: d.error || ('HTTP '+r.status)}; }
+    const added = mergeResults(d.groups || []);
+    renderSearchResults();
+    return {added, total: (d.groups||[]).length, note: d.note};
+  }catch(e){ return {error: e.message}; }
+}
+
+async function startSearch(){
+  const q = $('searchQ').value.trim();
+  if(!q) return alert('Keyword/niche daalein.');
+  if(searching) return;
+  searching = true;
+  $('startSearchBtn').disabled = true;
+  searchElapsed = 0;
+  $('searchTimerPill').style.display = 'inline-block';
+  $('searchTimerPill').textContent = '0s';
+  if(searchElapsedTimer) clearInterval(searchElapsedTimer);
+  searchElapsedTimer = setInterval(()=>{ searchElapsed++; $('searchTimerPill').textContent = searchElapsed + 's'; }, 1000);
+
+  const loop = async () => {
+    if(!searching) return;
+    $('searchState').textContent = 'Searching "' + q + '"...';
+    const res = await runOneSearchPass(q);
+    if(!searching) return;
+    if(res.error){
+      $('searchState').textContent = 'Error: ' + res.error + ' — retrying...';
+    } else {
+      $('searchState').textContent = res.added
+        ? `+${res.added} naye groups mile.`
+        : (res.note || 'Is pass mein koi naya group nahi mila, dobara try kar raha hun...');
+    }
+    if(searching) searchLoopTimer = setTimeout(loop, SEARCH_POLL_MS);
+  };
+  loop();
+}
+
+function stopSearch(){
+  searching = false;
+  $('startSearchBtn').disabled = false;
+  if(searchLoopTimer) clearTimeout(searchLoopTimer);
+  if(searchElapsedTimer) clearInterval(searchElapsedTimer);
+  searchLoopTimer = null; searchElapsedTimer = null;
+  $('searchTimerPill').style.display = 'none';
+  $('searchState').textContent = 'Stopped. ' + allFoundGroups.length + ' groups total so far.';
+}
 
 // ---------- Join only what user explicitly selected ----------
 async function joinSelected(){
-  const checks = document.querySelectorAll('.srCheck:checked');
-  if(!checks.length) return alert('Pehle Group Search mein se kuch groups select karein.');
+  const selected = allFoundGroups.filter(g=>g._checked);
+  if(!selected.length) return alert('Pehle kuch groups select karein.');
   $('joinBtn').disabled = true;
   let joined = 0, failed = 0, added = 0, i = 0;
-  const total = checks.length;
-  for(const c of checks){
+  const total = selected.length;
+  for(const g of selected){
     i++;
-    const g = lastSearchResults[Number(c.dataset.i)];
-    if(!g){ continue; }
     $('joinState').textContent = `Joining ${i}/${total}: ${g.title}...`;
     if(g.username){
       try{
         const r = await fetch('/api/join', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({username:g.username})});
         const d = await r.json();
-        if(d.ok) joined++; else failed++;
-      }catch(e){ failed++; }
-    } else { failed++; }
+        if(d.ok){ joined++; addHistory('join', g.title + ' (' + g.username + ')', true); }
+        else { failed++; addHistory('join', g.title + ' — ' + (d.error||'failed'), false); }
+      }catch(e){ failed++; addHistory('join', g.title + ' — ' + e.message, false); }
+    } else { failed++; addHistory('join', g.title + ' — no public username', false); }
     const chat = g.username || g.id;
     if(!db.targets.some(x=>x.chat===chat)){ db.targets.push({ chat, name: g.title, desc: '' }); added++; }
     save();
@@ -264,19 +316,16 @@ async function postOne(target){
   try{
     const r = await fetch('/api/post',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json();
-    db.logs.push({name:target.name, ok:!!d.ok, error:d.error||'', at:new Date().toISOString()});
-    db.logs = db.logs.slice(-100);
-    save();
+    addHistory('post', target.name + (d.ok?' — sent':' — '+(d.error||'failed')), !!d.ok);
     return !!d.ok;
   }catch(e){
-    db.logs.push({name:target.name, ok:false, error:e.message, at:new Date().toISOString()});
-    save();
+    addHistory('post', target.name + ' — ' + e.message, false);
     return false;
   }
 }
 
 async function postNow(){
-  if(!db.targets.length) return alert('Koi target nahi hai. Pehle Search+Join karein ya manually add karein.');
+  if(!db.targets.length) return alert('Koi target nahi hai. Pehle Search+Join karein.');
   $('postNowBtn').disabled = true;
   let ok=0, fail=0;
   for(let i=0;i<db.targets.length;i++){
@@ -319,7 +368,7 @@ async function tick(){
 
 function start(){
   if(running) return;
-  if(!db.targets.length) return alert('Koi target nahi hai. Pehle Search+Join karein ya manually add karein.');
+  if(!db.targets.length) return alert('Koi target nahi hai. Pehle Search+Join karein.');
   running = true;
   runCount = 0;
   render();
@@ -336,6 +385,7 @@ function stop(){
 }
 
 render();
+renderSearchResults();
 runDiagnostics();
 checkBot();
 </script></body></html>
