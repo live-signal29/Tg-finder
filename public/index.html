@@ -6,19 +6,24 @@ h1{margin:0 0 6px}h2{font-size:18px}
 label{display:block;font-weight:650;margin:10px 0 6px}
 input,textarea,button{font:inherit}
 input,textarea{width:100%;box-sizing:border-box;border:1px solid #ccd3da;border-radius:10px;padding:11px}
-textarea{min-height:120px;resize:vertical}
+textarea{min-height:110px;resize:vertical}
 .row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:180px}
 button{border:0;border-radius:10px;padding:11px 16px;cursor:pointer;font-weight:700}
 .primary{background:#111827;color:#fff}
+.secondary{background:#eef2f6;color:#111827}
 .danger{background:#b91c1c;color:#fff}
+button:disabled{opacity:.5;cursor:not-allowed}
 .muted{color:#667085;font-size:14px}
 .pill{display:inline-block;padding:4px 9px;border-radius:999px;background:#eef2f6;font-size:12px}
 .pill.good{background:#d1fae5;color:#065f46}
 .pill.bad{background:#fee2e2;color:#991b1b}
+.pill.busy{background:#fef3c7;color:#92400e}
 .target{border:1px solid #e4e7eb;border-radius:12px;padding:10px;margin:8px 0;display:flex;justify-content:space-between;gap:10px;align-items:center}
 .ok{color:#087f5b}.err{color:#b42318}
 .log{font-size:13px;border-top:1px solid #eee;padding:7px 0}
 .diag{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.step{font-size:13px;font-weight:700;color:#475467;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.imgprev{max-width:160px;border-radius:8px;margin-top:8px;display:block}
 </style></head><body><div class="wrap">
 
 <div class="card">
@@ -28,38 +33,54 @@ button{border:0;border-radius:10px;padding:11px 16px;cursor:pointer;font-weight:
 </div>
 
 <div class="card">
-  <h2>▶️ Controls</h2>
-  <div class="muted">START only when you want. Each posting target gets one post every 3 minutes, up to 15 per run.</div>
-  <p><span id="state" class="pill">STOPPED</span> <span id="countdown" class="pill" style="background:#eef;display:none"></span></p>
-  <button class="primary" onclick="checkBot()">Check Bot</button>
-  <button class="primary" onclick="start()">▶ START</button>
-  <button class="danger" onclick="stop()">■ STOP</button>
-  <div id="botState" class="muted" style="margin-top:8px"></div>
+  <div class="step">Step 1 — Find groups</div>
+  <h2>🔍 Group Search</h2>
+  <div class="muted">Finds public <b>GROUPS</b> only (chats with "members") — broadcast channels ("subscribers") are excluded automatically.</div>
+  <button class="secondary" onclick="testMT()">Test MTProto Session</button> <span id="mtState" class="muted"></span>
+  <div class="row" style="margin-top:10px"><div><label>Keyword</label><input id="searchQ" placeholder="forex trading gold"></div></div>
+  <button class="primary" onclick="searchGroups()" id="searchBtn">Search</button> <span id="searchState" class="muted"></span>
+  <div id="searchResults" style="margin-top:10px"></div>
 </div>
 
 <div class="card">
-  <h2>⚙️ Niche & Post</h2>
-  <label>Niche keywords (comma separated)</label>
-  <input id="keywords" value="forex,trading,gold,xauusd,crypto">
-  <label>Post text</label>
+  <div class="step">Step 2 — Join the ones you choose</div>
+  <h2>➕ Join Selected Groups</h2>
+  <div class="muted">Nothing is joined automatically. Tick the boxes above for the groups you want, then click below — it joins them one by one (with a short delay to avoid Telegram limits) and adds them to your Targets list.</div>
+  <button class="primary" onclick="joinSelected()" id="joinBtn">Join Selected &amp; Add as Targets</button>
+  <span id="joinState" class="muted"></span>
+</div>
+
+<div class="card">
+  <div class="step">Step 3 — Compose your post</div>
+  <h2>📝 Post Content</h2>
+  <label>Text (caption if you attach an image)</label>
   <textarea id="text">📊 Forex Market Update
 
 Trade responsibly. Always use proper risk management.</textarea>
+  <label>Image (optional)</label>
+  <input type="file" id="imageFile" accept="image/*" onchange="previewImage()">
+  <img id="imgPreview" class="imgprev" style="display:none">
+  <button class="secondary" style="margin-top:8px" onclick="clearImage()">Remove image</button>
 </div>
 
 <div class="card">
-  <h2>🔍 Group Search</h2>
-  <div class="muted">Discovery only — finds public groups/channels by keyword. Selecting "Add Selected" or pressing START will also auto-join the public ones using your own Telegram account. Posting still requires the bot to be separately added to each group with permission to send messages.</div>
-  <button class="primary" onclick="testMT()">Test MTProto Session</button> <span id="mtState" class="muted"></span>
-  <div class="row" style="margin-top:10px"><div><label>Keyword</label><input id="searchQ" placeholder="forex trading gold"></div></div>
-  <button class="primary" onclick="searchGroups()">Search</button> <span id="searchState" class="muted"></span>
-  <div id="searchResults" style="margin-top:10px"></div>
-  <button class="primary" style="margin-top:8px" onclick="addSelectedFromSearch()">➕ Add Selected as Targets</button>
+  <div class="step">Step 4 — Send</div>
+  <h2>📤 Post to Targets</h2>
+  <div class="muted">Sends once, right now, to every group in your Targets list below.</div>
+  <button class="primary" onclick="postNow()" id="postNowBtn">Post Now to All Targets</button>
+  <span id="postNowState" class="muted"></span>
+
+  <div style="margin-top:16px;border-top:1px solid #eee;padding-top:12px">
+    <div class="muted">Optional: repeat automatically — one target every 3 minutes, up to 15 posts per run.</div>
+    <p><span id="state" class="pill">STOPPED</span> <span id="countdown" class="pill" style="background:#eef;display:none"></span></p>
+    <button class="primary" onclick="start()">▶ Start Auto-Posting</button>
+    <button class="danger" onclick="stop()">■ Stop</button>
+  </div>
 </div>
 
 <div class="card">
   <h2>➕ Manually Approve a Target</h2>
-  <div class="muted">Add only groups/channels where your bot has permission to post.</div>
+  <div class="muted">Add only groups/channels where your bot already has permission to post.</div>
   <div class="row">
     <div><label>Chat ID / @username</label><input id="chat" placeholder="@yourgroup"></div>
     <div><label>Group name</label><input id="name" placeholder="Forex Traders Group"></div>
@@ -71,15 +92,17 @@ Trade responsibly. Always use proper risk management.</textarea>
 
 <div class="card"><h2>📋 Targets</h2><div id="targets"></div></div>
 <div class="card"><h2>📊 Activity</h2><div id="logs" class="muted">No activity yet.</div></div>
+<div class="card"><h2>🤖 Bot</h2><button class="secondary" onclick="checkBot()">Check Bot</button> <span id="botState" class="muted"></span></div>
 
 </div><script>
-const KEY='tg_niche_poster_v3';
+const KEY='tg_niche_poster_v4';
 let db=JSON.parse(localStorage.getItem(KEY)||'{"targets":[],"logs":[],"index":0}');
-let running=false, timer=null, runCount=0, countdownTimer=null;
+let running=false, timer=null, runCount=0, countdownTimer=null, searchTimer=null;
 const CYCLE_MS = 180000;
 const MAX_PER_RUN = 15;
 const $=id=>document.getElementById(id);
 let lastSearchResults = [];
+let currentImageBase64 = null;
 
 function save(){ localStorage.setItem(KEY, JSON.stringify(db)); render(); }
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -87,8 +110,8 @@ function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 function render(){
   $('state').textContent = running ? 'RUNNING' : 'STOPPED';
   $('targets').innerHTML = db.targets.length
-    ? db.targets.map((t,i)=>`<div class="target"><div><b>${esc(t.name)}</b><br><span class="muted">${esc(t.chat)} · ${esc(t.desc||'')}</span></div><button onclick="removeTarget(${i})">Remove</button></div>`).join('')
-    : '<div class="muted">No approved targets.</div>';
+    ? db.targets.map((t,i)=>`<div class="target"><div><b>${esc(t.name)}</b><br><span class="muted">${esc(t.chat)} · ${esc(t.desc||'')}</span></div><button class="secondary" onclick="removeTarget(${i})">Remove</button></div>`).join('')
+    : '<div class="muted">No approved targets yet.</div>';
   $('logs').innerHTML = db.logs.length
     ? db.logs.slice(-20).reverse().map(l=>`<div class="log"><b>${esc(l.name)}</b> — ${l.ok?'<span class="ok">posted</span>':'<span class="err">failed</span>'} — ${new Date(l.at).toLocaleString()}${l.error?' — '+esc(l.error):''}</div>`).join('')
     : 'No activity yet.';
@@ -119,13 +142,12 @@ async function runDiagnostics(){
       pill('TG_API_HASH', v.TG_API_HASH),
       pill('TG_SESSION', v.TG_SESSION),
     ].join(' ');
-  }catch(e){
-    $('diag').innerHTML = '<span class="pill bad">Diagnostics failed: '+esc(e.message)+'</span>';
-  }
+  }catch(e){ $('diag').innerHTML = '<span class="pill bad">Diagnostics failed: '+esc(e.message)+'</span>'; }
 }
 
 // ---------- Bot ----------
 async function checkBot(){
+  $('botState').textContent = 'Checking...';
   try{
     const r = await fetch('/api/check');
     const d = await r.json();
@@ -145,22 +167,32 @@ async function testMT(){
   }catch(e){ $('mtState').textContent = 'Error: ' + e.message; }
 }
 
-// ---------- Search ----------
+// ---------- Search (groups only, with live timer) ----------
 async function searchGroups(){
   const q = $('searchQ').value.trim();
   if(!q) return alert('Keyword daalein.');
-  $('searchState').textContent = 'Searching...';
   $('searchResults').innerHTML = '';
+  $('searchBtn').disabled = true;
+  let elapsed = 0;
+  $('searchState').textContent = 'Searching... 0s';
+  if(searchTimer) clearInterval(searchTimer);
+  searchTimer = setInterval(()=>{ elapsed++; $('searchState').textContent = 'Searching... ' + elapsed + 's'; }, 1000);
   try{
     const r = await fetch('/api/search?q=' + encodeURIComponent(q));
     const d = await r.json();
+    clearInterval(searchTimer);
     if(!r.ok || !d.ok){ $('searchState').textContent = 'Error: ' + (d.error || ('HTTP '+r.status)); return; }
     lastSearchResults = d.groups || [];
     $('searchState').textContent = lastSearchResults.length
-      ? (lastSearchResults.length + ' results mile (max 15).')
-      : (d.note || 'Koi result nahi mila.');
+      ? (lastSearchResults.length + ' groups mile (max 15). Select karke "Join Selected" dabayein.')
+      : (d.note || 'Koi group nahi mila.');
     renderSearchResults();
-  }catch(e){ $('searchState').textContent = 'Error: ' + e.message; }
+  }catch(e){
+    clearInterval(searchTimer);
+    $('searchState').textContent = 'Error: ' + e.message;
+  }finally{
+    $('searchBtn').disabled = false;
+  }
 }
 
 function renderSearchResults(){
@@ -169,68 +201,95 @@ function renderSearchResults(){
     <div class="target">
       <div>
         <label style="display:inline;font-weight:600"><input type="checkbox" class="srCheck" data-i="${i}" style="width:auto;margin-right:8px"> ${esc(g.title)}</label>
-        <br><span class="muted">${g.username?esc(g.username):'(no username)'} ${g.membersCount?'· '+g.membersCount+' members':''} ${g.isMegagroup?'· group':g.isBroadcast?'· channel':''}</span>
+        <br><span class="muted">${g.username?esc(g.username):'(no username)'} ${g.membersCount?'· '+g.membersCount+' members':''}</span>
         ${g.link?`<br><a href="${g.link}" target="_blank" class="muted">${g.link}</a>`:''}
       </div>
     </div>`).join('');
 }
 
-function addSelectedFromSearch(){
+// ---------- Join only what user explicitly selected ----------
+async function joinSelected(){
   const checks = document.querySelectorAll('.srCheck:checked');
-  if(!checks.length) return alert('Pehle kuch groups select karein.');
-  let added = 0;
-  checks.forEach(c=>{
+  if(!checks.length) return alert('Pehle Group Search mein se kuch groups select karein.');
+  $('joinBtn').disabled = true;
+  let joined = 0, failed = 0, added = 0, i = 0;
+  const total = checks.length;
+  for(const c of checks){
+    i++;
     const g = lastSearchResults[Number(c.dataset.i)];
-    if(!g) return;
+    if(!g){ continue; }
+    $('joinState').textContent = `Joining ${i}/${total}: ${g.title}...`;
+    if(g.username){
+      try{
+        const r = await fetch('/api/join', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({username:g.username})});
+        const d = await r.json();
+        if(d.ok) joined++; else failed++;
+      }catch(e){ failed++; }
+    } else { failed++; }
     const chat = g.username || g.id;
-    if(db.targets.some(x=>x.chat===chat)) return;
-    db.targets.push({ chat, name: g.title, desc: '' });
-    added++;
-  });
-  save();
-  alert(added + ' targets add ho gaye. Bot ko in groups mein post karne ki permission alag se deni hogi.');
-}
-
-// ---------- Auto search + join + post cycle ----------
-async function joinFoundGroups(groups){
-  let joined = 0, failed = 0;
-  for(const g of groups){
-    if(!g.username) continue;
-    try{
-      const r = await fetch('/api/join', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({username:g.username})});
-      const d = await r.json();
-      if(d.ok) joined++; else failed++;
-    }catch(e){ failed++; }
-    await new Promise(res=>setTimeout(res, 1500));
-  }
-  return {joined, failed};
-}
-
-async function findAndJoin(query){
-  $('searchQ').value = query;
-  $('searchState').textContent = '"' + query + '" ke liye groups dhoondh raha hun...';
-  try{
-    const r = await fetch('/api/search?q=' + encodeURIComponent(query));
-    const d = await r.json();
-    if(!r.ok || !d.ok){ $('searchState').textContent = 'Error: ' + (d.error || ('HTTP '+r.status)); return []; }
-    if(!d.groups || !d.groups.length){ $('searchState').textContent = d.note || ('Koi group nahi mila "'+query+'" ke liye.'); return []; }
-    lastSearchResults = d.groups;
-    renderSearchResults();
-    $('searchState').textContent = d.groups.length + ' groups mile — join kar raha hun...';
-    const {joined, failed} = await joinFoundGroups(d.groups);
-    let added = 0;
-    d.groups.forEach(g=>{
-      const chat = g.username || g.id;
-      if(db.targets.some(x=>x.chat===chat)) return;
-      db.targets.push({ chat, name: g.title, desc: query });
-      added++;
-    });
+    if(!db.targets.some(x=>x.chat===chat)){ db.targets.push({ chat, name: g.title, desc: '' }); added++; }
     save();
-    $('searchState').textContent = d.groups.length + ' groups mile · ' + joined + ' join ho gaye · ' + failed + ' fail · ' + added + ' targets mein add hue.';
-    return d.groups;
-  }catch(e){ $('searchState').textContent = 'Error: ' + e.message; return []; }
+    if(i < total){
+      $('joinState').textContent = `Joined ${joined}/${i} so far — waiting before next join...`;
+      await new Promise(res=>setTimeout(res, 1500));
+    }
+  }
+  $('joinState').textContent = `Done: ${joined} joined, ${failed} failed, ${added} added to Targets.`;
+  $('joinBtn').disabled = false;
 }
 
+// ---------- Compose: image handling ----------
+function previewImage(){
+  const file = $('imageFile').files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    currentImageBase64 = e.target.result;
+    $('imgPreview').src = currentImageBase64;
+    $('imgPreview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+function clearImage(){
+  currentImageBase64 = null;
+  $('imageFile').value = '';
+  $('imgPreview').style.display = 'none';
+}
+
+// ---------- Post now to all targets ----------
+async function postOne(target){
+  const text = $('text').value.trim();
+  const body = { chatId: target.chat, text };
+  if(currentImageBase64) body.imageBase64 = currentImageBase64;
+  try{
+    const r = await fetch('/api/post',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    db.logs.push({name:target.name, ok:!!d.ok, error:d.error||'', at:new Date().toISOString()});
+    db.logs = db.logs.slice(-100);
+    save();
+    return !!d.ok;
+  }catch(e){
+    db.logs.push({name:target.name, ok:false, error:e.message, at:new Date().toISOString()});
+    save();
+    return false;
+  }
+}
+
+async function postNow(){
+  if(!db.targets.length) return alert('Koi target nahi hai. Pehle Search+Join karein ya manually add karein.');
+  $('postNowBtn').disabled = true;
+  let ok=0, fail=0;
+  for(let i=0;i<db.targets.length;i++){
+    $('postNowState').textContent = `Posting ${i+1}/${db.targets.length}...`;
+    const success = await postOne(db.targets[i]);
+    if(success) ok++; else fail++;
+    if(i < db.targets.length-1) await new Promise(res=>setTimeout(res, 1200));
+  }
+  $('postNowState').textContent = `Done: ${ok} posted, ${fail} failed.`;
+  $('postNowBtn').disabled = false;
+}
+
+// ---------- Optional recurring auto-posting ----------
 function showCountdown(seconds){
   const el = $('countdown');
   el.style.display = 'inline-block';
@@ -249,17 +308,7 @@ async function tick(){
   const t = db.targets[db.index % db.targets.length];
   db.index = (db.index + 1) % db.targets.length;
   runCount++;
-  const text = $('text').value.trim();
-  try{
-    const r = await fetch('/api/post',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chatId:t.chat,text})});
-    const d = await r.json();
-    db.logs.push({name:t.name, ok:!!d.ok, error:d.error||'', at:new Date().toISOString()});
-    db.logs = db.logs.slice(-100);
-    save();
-  }catch(e){
-    db.logs.push({name:t.name, ok:false, error:e.message, at:new Date().toISOString()});
-    save();
-  }
+  await postOne(t);
   if(running && runCount < MAX_PER_RUN){
     showCountdown(CYCLE_MS/1000);
     timer = setTimeout(tick, CYCLE_MS);
@@ -268,23 +317,14 @@ async function tick(){
   }
 }
 
-async function start(){
+function start(){
   if(running) return;
-  const query = window.prompt('Konse public groups dhoondhne hain? Keyword likhein (jaise: trading learning, signal):', '');
-  if(query === null) return;
-  const q = query.trim();
-  if(q){ await findAndJoin(q); render(); }
-  if(!db.targets.length){
-    $('state').textContent = 'STOPPED';
-    $('botState').textContent = 'Koi target nahi mila ya join nahi hua — dobara koshish karein ya Group Search se manually select karein.';
-    return;
-  }
+  if(!db.targets.length) return alert('Koi target nahi hai. Pehle Search+Join karein ya manually add karein.');
   running = true;
   runCount = 0;
   render();
   tick();
 }
-
 function stop(){
   running = false;
   runCount = 0;
