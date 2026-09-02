@@ -25,6 +25,28 @@ async function getClient() {
   return client;
 }
 
+function isGroupLike(c) {
+  if (!c) return false;
+  const cls = c.className || "";
+  if (cls !== "Chat" && cls !== "Channel") return false;
+  if (c.deactivated) return false;
+  if (c.left === true && c.username == null) return false;
+  return true;
+}
+
+function toGroupObj(c) {
+  return {
+    id: c.id?.toString?.() || "",
+    title: c.title || "",
+    username: c.username ? `@${c.username}` : null,
+    membersCount: c.participantsCount ?? null,
+    isChannel: c.className === "Channel",
+    isBroadcast: !!c.broadcast,
+    isMegagroup: !!c.megagroup,
+    link: c.username ? `https://t.me/${c.username}` : null,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "GET only" });
@@ -35,34 +57,53 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Query parameter q is required." });
   }
 
+  let client;
   try {
-    const client = await getClient();
-
-    // contacts.search: global search across Telegram for chats/users/channels matching the query.
-    const result = await client.invoke(
-      new Api.contacts.Search({
-        q: query,
-        limit: 20,
-      })
-    );
-
-    const chats = (result.chats || []).filter(
-      (c) => c.className === "Chat" || c.className === "Channel"
-    );
-
-    const groups = chats.slice(0, 15).map((c) => ({
-      id: c.id?.toString?.() || "",
-      title: c.title || "",
-      username: c.username ? `@${c.username}` : null,
-      membersCount: c.participantsCount ?? null,
-      isChannel: c.className === "Channel",
-      isBroadcast: !!c.broadcast, // true = channel (posts), false with Channel class = supergroup
-      isMegagroup: !!c.megagroup,
-      link: c.username ? `https://t.me/${c.username}` : null,
-    }));
-
-    return res.status(200).json({ ok: true, count: groups.length, groups });
+    client = await getClient();
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
+
+  const collected = new Map();
+
+  try {
+    const r1 = await client.invoke(new Api.contacts.Search({ q: query, limit: 20 }));
+    (r1.chats || []).filter(isGroupLike).forEach((c) => collected.set(c.id.toString(), c));
+  } catch (e) {
+    // ignore, try the other source
+  }
+
+  try {
+    const r2 = await client.invoke(
+      new Api.messages.SearchGlobal({
+        q: query,
+        filter: new Api.InputMessagesFilterEmpty(),
+        minDate: 0,
+        maxDate: 0,
+        offsetRate: 0,
+        offsetPeer: new Api.InputPeerEmpty(),
+        offsetId: 0,
+        limit: 30,
+      })
+    );
+    (r2.chats || []).filter(isGroupLike).forEach((c) => collected.set(c.id.toString(), c));
+  } catch (e) {
+    // ignore
+  }
+
+  if (collected.size === 0) {
+    return res.status(200).json({
+      ok: true,
+      count: 0,
+      groups: [],
+      note: "Koi public group nahi mila is keyword ke liye. Koi doosra ya zyada aam keyword try karein.",
+    });
+  }
+
+  const groups = Array.from(collected.values())
+    .sort((a, b) => (b.participantsCount || 0) - (a.participantsCount || 0))
+    .slice(0, 15)
+    .map(toGroupObj);
+
+  return res.status(200).json({ ok: true, count: groups.length, groups });
 }
