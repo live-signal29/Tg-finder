@@ -25,7 +25,6 @@ async function getClient() {
   return client;
 }
 
-// Only real GROUPS (people with "members") — never broadcast channels ("subscribers").
 function isRealGroup(c) {
   if (!c) return false;
   const cls = c.className || "";
@@ -70,16 +69,15 @@ export default async function handler(req, res) {
   }
 
   const collected = new Map();
+  const debugErrors = [];
 
-  // Source 1: contacts.search (title/username matches) — single call, higher limit.
   try {
     const r1 = await client.invoke(new Api.contacts.Search({ q: query, limit: 40 }));
     (r1.chats || []).filter(isRealGroup).forEach((c) => collected.set(c.id.toString(), c));
   } catch (e) {
-    // ignore
+    debugErrors.push("contacts.search: " + (e?.message || String(e)));
   }
 
-  // Source 2: messages.searchGlobal — paginate a few pages to try to reach 15+ groups.
   let offsetRate = 0;
   let offsetPeer = new Api.InputPeerEmpty();
   let offsetId = 0;
@@ -102,14 +100,15 @@ export default async function handler(req, res) {
         })
       );
     } catch (e) {
-      break; // stop paginating on any error, keep whatever we have
+      debugErrors.push("searchGlobal page " + page + ": " + (e?.message || String(e)));
+      break;
     }
 
     const before = collected.size;
     (r2.chats || []).filter(isRealGroup).forEach((c) => collected.set(c.id.toString(), c));
 
     const msgs = r2.messages || [];
-    if (!msgs.length) break; // no more results
+    if (!msgs.length) break;
 
     const last = msgs[msgs.length - 1];
     offsetId = last.id || 0;
@@ -117,10 +116,10 @@ export default async function handler(req, res) {
     try {
       offsetPeer = await client.getInputEntity(last.peerId);
     } catch (e) {
-      break; // can't paginate further without a valid peer
+      break;
     }
 
-    if (collected.size === before) break; // this page added nothing new, stop
+    if (collected.size === before) break;
   }
 
   if (collected.size === 0) {
@@ -128,7 +127,9 @@ export default async function handler(req, res) {
       ok: true,
       count: 0,
       groups: [],
-      note: "Koi public GROUP nahi mila is keyword ke liye (channels exclude kiye gaye hain). Doosra keyword try karein.",
+      note:
+        "Koi public GROUP nahi mila is keyword ke liye." +
+        (debugErrors.length ? " Internal errors: " + debugErrors.join(" | ") : ""),
     });
   }
 
