@@ -3,7 +3,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;background:#f
 </style></head><body><div class="wrap">
 <div class="card"><h1>🤖 Telegram Niche Poster</h1><div class="muted">START only when you want. Each approved target gets one post every 3 minutes.</div><p><span id="state" class="pill">STOPPED</span> <span id="countdown" class="pill" style="background:#eef;display:none"></span> <span id="bot"></span></p><button class="primary" onclick="checkBot()">Check Bot</button> <button class="primary" onclick="start()">▶ START</button> <button class="danger" onclick="stop()">■ STOP</button></div>
 <div class="card"><h2>⚙️ Niche & Post</h2><label>Niche keywords (comma separated)</label><input id="keywords" value="forex,trading,gold,xauusd,crypto"><label>Post text</label><textarea id="text">📊 Forex Market Update\n\nTrade responsibly. Always use proper risk management.</textarea></div>
-<div class="card"><h2>🔍 Group Search</h2><div class="muted">Sirf discovery ke liye — public groups/channels dhoondh kar dikhata hai. Koi bhi group add nahi hoga jab tak aap khud select na karein, aur bot ko wahan post karne ki permission alag se leni hogi (add/promote as admin).</div><div class="row"><div><label>Keyword</label><input id="searchQ" placeholder="forex trading gold"></div></div><button class="primary" onclick="searchGroups()">Search</button> <span id="searchState" class="muted"></span><div id="searchResults" style="margin-top:10px"></div><button class="primary" style="margin-top:8px" onclick="addSelectedFromSearch()">➕ Add Selected as Targets</button></div>
+<div class="card"><h2>🔍 Group Search</h2><div class="muted">Sirf discovery ke liye — public groups/channels dhoondh kar dikhata hai. Koi bhi group add nahi hoga jab tak aap khud select na karein, aur bot ko wahan post karne ki permission alag se leni hogi (add/promote as admin).</div><button class="primary" onclick="testMT()">Test MTProto Session</button> <span id="mtState" class="muted"></span><div class="row" style="margin-top:10px"><div><label>Keyword</label><input id="searchQ" placeholder="forex trading gold"></div></div><button class="primary" onclick="searchGroups()">Search</button> <span id="searchState" class="muted"></span><div id="searchResults" style="margin-top:10px"></div><button class="primary" style="margin-top:8px" onclick="addSelectedFromSearch()">➕ Add Selected as Targets</button></div>
 <div class="card"><h2>➕ Approved target</h2><div class="muted">Add only groups/channels where your bot has permission to post.</div><div class="row"><div><label>Chat ID / @username</label><input id="chat" placeholder="@yourgroup"></div><div><label>Group name</label><input id="name" placeholder="Forex Traders Group"></div></div><label>Description / niche</label><input id="desc" placeholder="forex trading signals gold">r><button class="primary" onclick="addTarget()">Add Target</button></div>
 <div class="card"><h2>📋 Targets</h2><div id="targets"></div></div>
 <div class="card"><h2>📊 Activity</h2><div id="logs" class="muted">No activity yet.</div></div>
@@ -17,6 +17,18 @@ function removeTarget(i){db.targets.splice(i,1);db.index=0;save()}
 function render(){ $('state').textContent=running?'RUNNING':'STOPPED'; $('targets').innerHTML=db.targets.length?db.targets.map((t,i)=>`<div class="target"><div><b>${esc(t.name)}</b><br><span class="muted">${esc(t.chat)} · ${esc(t.desc)}</span></div><button onclick="removeTarget(${i})">Remove</button></div>`).join(''):'<div class="muted">No approved targets.</div>'; $('logs').innerHTML=db.logs.length?db.logs.slice(-20).reverse().map(l=>`<div class="log"><b>${esc(l.name)}</b> — ${l.ok?'<span class="ok">posted</span>':'<span class="err">failed</span>'} — ${new Date(l.at).toLocaleString()}${l.error?' — '+esc(l.error):''}</div>`).join(''):'No activity yet.'}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 let lastSearchResults = [];
+async function testMT(){
+  $('mtState').textContent = 'Testing...';
+  try{
+    const r = await fetch('/api/mtcheck');
+    const d = await r.json();
+    if(d.ok){
+      $('mtState').textContent = 'OK — logged in as ' + (d.loggedInAs.username ? '@'+d.loggedInAs.username : d.loggedInAs.firstName);
+    } else {
+      $('mtState').textContent = 'FAILED: ' + d.error;
+    }
+  }catch(e){ $('mtState').textContent = 'Error: ' + e.message; }
+}
 async function searchGroups(){
   const q = $('searchQ').value.trim();
   if(!q) return alert('Keyword daalein.');
@@ -25,9 +37,11 @@ async function searchGroups(){
   try{
     const r = await fetch('/api/search?q=' + encodeURIComponent(q));
     const d = await r.json();
-    if(!d.ok){ $('searchState').textContent = 'Error: ' + d.error; return; }
+    if(!r.ok || !d.ok){ $('searchState').textContent = 'Error: ' + (d.error || ('HTTP ' + r.status)); return; }
     lastSearchResults = d.groups || [];
-    $('searchState').textContent = lastSearchResults.length + ' results mile (max 15).';
+    $('searchState').textContent = lastSearchResults.length
+      ? (lastSearchResults.length + ' results mile (max 15).')
+      : (d.note || 'Koi result nahi mila is keyword ke liye.');
     renderSearchResults();
   }catch(e){ $('searchState').textContent = 'Error: ' + e.message; }
 }
@@ -120,8 +134,12 @@ async function findAndJoin(query){
   try{
     const r = await fetch('/api/search?q=' + encodeURIComponent(query));
     const d = await r.json();
-    if(!d.ok || !d.groups || !d.groups.length){
-      $('searchState').textContent = 'Koi group nahi mila "' + query + '" ke liye.';
+    if(!r.ok || !d.ok){
+      $('searchState').textContent = 'Error: ' + (d.error || ('HTTP ' + r.status));
+      return [];
+    }
+    if(!d.groups || !d.groups.length){
+      $('searchState').textContent = d.note || ('Koi group nahi mila "' + query + '" ke liye.');
       return [];
     }
     lastSearchResults = d.groups;
