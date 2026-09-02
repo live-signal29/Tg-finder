@@ -25,13 +25,23 @@ async function getClient() {
   return client;
 }
 
-function isGroupLike(c) {
+// Only real GROUPS (people with "members") — never broadcast channels ("subscribers").
+function isRealGroup(c) {
   if (!c) return false;
   const cls = c.className || "";
-  if (cls !== "Chat" && cls !== "Channel") return false;
-  if (c.deactivated) return false;
-  if (c.left === true && c.username == null) return false;
-  return true;
+  if (cls === "Chat") {
+    // Basic (non-megagroup) group chat — always a real group.
+    if (c.deactivated) return false;
+    return true;
+  }
+  if (cls === "Channel") {
+    // Only keep supergroups (megagroup=true). Exclude broadcast channels.
+    if (c.broadcast) return false;
+    if (!c.megagroup) return false;
+    if (c.left === true && c.username == null) return false;
+    return true;
+  }
+  return false;
 }
 
 function toGroupObj(c) {
@@ -40,9 +50,6 @@ function toGroupObj(c) {
     title: c.title || "",
     username: c.username ? `@${c.username}` : null,
     membersCount: c.participantsCount ?? null,
-    isChannel: c.className === "Channel",
-    isBroadcast: !!c.broadcast,
-    isMegagroup: !!c.megagroup,
     link: c.username ? `https://t.me/${c.username}` : null,
   };
 }
@@ -67,8 +74,8 @@ export default async function handler(req, res) {
   const collected = new Map();
 
   try {
-    const r1 = await client.invoke(new Api.contacts.Search({ q: query, limit: 20 }));
-    (r1.chats || []).filter(isGroupLike).forEach((c) => collected.set(c.id.toString(), c));
+    const r1 = await client.invoke(new Api.contacts.Search({ q: query, limit: 25 }));
+    (r1.chats || []).filter(isRealGroup).forEach((c) => collected.set(c.id.toString(), c));
   } catch (e) {
     // ignore, try the other source
   }
@@ -83,10 +90,10 @@ export default async function handler(req, res) {
         offsetRate: 0,
         offsetPeer: new Api.InputPeerEmpty(),
         offsetId: 0,
-        limit: 30,
+        limit: 40,
       })
     );
-    (r2.chats || []).filter(isGroupLike).forEach((c) => collected.set(c.id.toString(), c));
+    (r2.chats || []).filter(isRealGroup).forEach((c) => collected.set(c.id.toString(), c));
   } catch (e) {
     // ignore
   }
@@ -96,7 +103,7 @@ export default async function handler(req, res) {
       ok: true,
       count: 0,
       groups: [],
-      note: "Koi public group nahi mila is keyword ke liye. Koi doosra ya zyada aam keyword try karein.",
+      note: "Koi public GROUP nahi mila is keyword ke liye (channels ko is search se exclude kiya gaya hai). Doosra keyword try karein.",
     });
   }
 
