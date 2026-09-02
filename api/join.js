@@ -39,13 +39,9 @@ export default async function handler(req, res) {
 
   try {
     const client = await getClient();
-    await client.invoke(
-      new Api.channels.JoinChannel({
-        channel: clean,
-      })
-    );
+    await client.invoke(new Api.channels.JoinChannel({ channel: clean }));
     return res.status(200).json({ ok: true, joined: clean });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    return res.status(200).json({ ok: false, error: e?.message || String(e) });
   }
 }

@@ -11,11 +11,17 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: false,
       error: "TG_API_ID, TG_API_HASH ya TG_SESSION Vercel env mein missing hai.",
+      missing: {
+        TG_API_ID: !apiId,
+        TG_API_HASH: !apiHash,
+        TG_SESSION: !sessionStr,
+      },
     });
   }
 
+  let client;
   try {
-    const client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
+    client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
       connectionRetries: 2,
     });
     await client.connect();
@@ -31,6 +37,9 @@ export default async function handler(req, res) {
       },
     });
   } catch (e) {
+    try {
+      if (client) await client.disconnect();
+    } catch (_) {}
     return res.status(200).json({ ok: false, error: e?.message || String(e) });
   }
 }
