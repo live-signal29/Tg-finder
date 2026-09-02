@@ -53,8 +53,8 @@ At the end it prints a long session string. Copy it — this is `TG_SESSION`. Ne
 4. Only once both of the above pass, use Group Search or START.
 
 ## How the app works (updated flow)
-1. **Group Search**: type a keyword/niche, click "Start Searching". It keeps searching in the background (visible timer running) until you click "Stop" — each pass tries to gather at least 15 real groups (paginating through Telegram's search) and merges new unique ones into the results list. Broadcast channels are excluded — only groups with "members" show up.
-2. **Results persist**: running a second keyword does NOT clear the first keyword's results — everything accumulates in one list. Use "Select All" / "Deselect All" or "Clear All Results" to manage the list yourself.
+1. **Group Search**: type ANY single keyword/niche (e.g. "trading"), click "Start Searching". You don't need to type every related word yourself — the app automatically cycles through a built-in pool of related finance/trading terms too (forex, signals, mt5, crypto, gold, xauusd, pips, scalping, etc.), searching one term every few seconds and merging new unique groups into the list, until you click "Stop". Broadcast channels are excluded — only groups with "members" show up. If zero groups are found, the status line will show the underlying error/reason from Telegram's API for that pass.
+2. **Results persist**: results from every term (and every search session) accumulate in one list — nothing is cleared automatically. Use "Select All" / "Deselect All" or "Clear All Results" to manage the list yourself.
 3. **Join Selected**: tick the groups you want, click "Join Selected & Add as Targets" — joins them one at a time (1.5s gap) using your own account (TG_SESSION), and adds each to Targets.
 4. **Compose**: write your post text and optionally attach an image (sent as a photo with caption).
 5. **Post to Targets**: "Post Now to All Targets" sends once immediately. "Start Auto-Posting" repeats automatically, one target every 3 minutes, up to 15 per run, with a visible countdown.
