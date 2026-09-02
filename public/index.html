@@ -199,6 +199,27 @@ function clearAllResults(){
   renderSearchResults();
 }
 
+// A pool of finance/trading related tags. Whatever niche word the user types,
+// the search automatically also tries these related terms in rotation —
+// so "trading" alone will also try forex, signal, mt5, crypto, etc.
+const RELATED_TERM_POOL = [
+  'forex','trading','signals','signal','forex signals','trading signals',
+  'finance','mt5','mt4','crypto','crypto signals','gold','xauusd','xau',
+  'stocks','investment','forex trading','binary trading','forex education',
+  'trading academy','forex community','pips','scalping','day trading'
+];
+
+function buildSearchQueue(seed){
+  const seedLower = seed.toLowerCase();
+  const queue = [seed];
+  RELATED_TERM_POOL.forEach(t=>{
+    if(t.toLowerCase() !== seedLower && !queue.some(q=>q.toLowerCase()===t.toLowerCase())){
+      queue.push(t);
+    }
+  });
+  return queue;
+}
+
 function mergeResults(newGroups){
   let added = 0;
   newGroups.forEach(g=>{
@@ -233,17 +254,22 @@ async function startSearch(){
   if(searchElapsedTimer) clearInterval(searchElapsedTimer);
   searchElapsedTimer = setInterval(()=>{ searchElapsed++; $('searchTimerPill').textContent = searchElapsed + 's'; }, 1000);
 
+  const queue = buildSearchQueue(q);
+  let qi = 0;
+
   const loop = async () => {
     if(!searching) return;
-    $('searchState').textContent = 'Searching "' + q + '"...';
-    const res = await runOneSearchPass(q);
+    const term = queue[qi % queue.length];
+    qi++;
+    $('searchState').textContent = 'Searching "' + term + '" (related to "' + q + '")...';
+    const res = await runOneSearchPass(term);
     if(!searching) return;
     if(res.error){
-      $('searchState').textContent = 'Error: ' + res.error + ' — retrying...';
+      $('searchState').textContent = 'Error on "' + term + '": ' + res.error + ' — moving to next term...';
     } else {
       $('searchState').textContent = res.added
-        ? `+${res.added} naye groups mile.`
-        : (res.note || 'Is pass mein koi naya group nahi mila, dobara try kar raha hun...');
+        ? `"${term}": +${res.added} naye groups mile. (Cycling through related terms...)`
+        : `"${term}": kuch naya nahi mila. Agla related term try kar raha hun...`;
     }
     if(searching) searchLoopTimer = setTimeout(loop, SEARCH_POLL_MS);
   };
