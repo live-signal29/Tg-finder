@@ -100,9 +100,64 @@ async function tick(){
   }
 }
 
-function start(){
+async function joinFoundGroups(groups){
+  let joined = 0, failed = 0;
+  for(const g of groups){
+    if(!g.username) continue; // only public @username groups/channels can be auto-joined
+    try{
+      const r = await fetch('/api/join', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({username:g.username})});
+      const d = await r.json();
+      if(d.ok) joined++; else failed++;
+    }catch(e){ failed++; }
+    await new Promise(res=>setTimeout(res, 1500)); // gap between joins to avoid Telegram rate limits
+  }
+  return {joined, failed};
+}
+
+async function findAndJoin(query){
+  $('searchQ').value = query;
+  $('searchState').textContent = '"' + query + '" ke liye groups dhoondh raha hun...';
+  try{
+    const r = await fetch('/api/search?q=' + encodeURIComponent(query));
+    const d = await r.json();
+    if(!d.ok || !d.groups || !d.groups.length){
+      $('searchState').textContent = 'Koi group nahi mila "' + query + '" ke liye.';
+      return [];
+    }
+    lastSearchResults = d.groups;
+    renderSearchResults();
+    $('searchState').textContent = d.groups.length + ' groups mile — join kar raha hun...';
+    const {joined, failed} = await joinFoundGroups(d.groups);
+    let added = 0;
+    d.groups.forEach(g=>{
+      const chat = g.username || g.id;
+      if(db.targets.some(x=>x.chat===chat)) return;
+      db.targets.push({ chat, name: g.title, desc: query });
+      added++;
+    });
+    save();
+    $('searchState').textContent = d.groups.length + ' groups mile · ' + joined + ' join ho gaye · ' + failed + ' fail (private/link-only) · ' + added + ' targets mein add hue.';
+    return d.groups;
+  }catch(e){
+    $('searchState').textContent = 'Error: ' + e.message;
+    return [];
+  }
+}
+
+async function start(){
   if(running) return;
-  if(!db.targets.length) return alert('Add at least one approved target first.');
+  const query = window.prompt('Konse public groups dhoondhne hain? Keyword likhein (jaise: trading learning, signal):', '');
+  if(query === null) return; // cancelled
+  const q = query.trim();
+  if(q){
+    await findAndJoin(q);
+    render();
+  }
+  if(!db.targets.length){
+    $('state').textContent = 'STOPPED';
+    $('bot').textContent = 'Koi target nahi mila ya join nahi hua — dobara koshish karein ya Group Search se manually select karein.';
+    return;
+  }
   running = true;
   runCount = 0;
   render();
