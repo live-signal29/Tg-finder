@@ -52,13 +52,17 @@ At the end it prints a long session string. Copy it — this is `TG_SESSION`. Ne
 3. Click **Test MTProto Session** — should show "OK — logged in as ...".
 4. Only once both of the above pass, use Group Search or START.
 
-## How the app works
-- **START**: asks what kind of public groups to find (e.g. "trading learning, signal"), searches Telegram, shows results, auto-joins the public ones using your account (TG_SESSION), adds them as posting targets, then posts to each target once every 3 minutes with a visible countdown. Stops automatically after 15 posts, or click STOP any time.
-- **Group Search** (manual): search and review groups without starting the posting cycle. Select specific ones and click "Add Selected as Targets".
-- **Manually Approve a Target**: directly add a chat ID/@username you already know the bot can post to.
+## How the app works (updated flow)
+1. **Group Search**: type a keyword/niche, click "Start Searching". It keeps searching in the background (visible timer running) until you click "Stop" — each pass tries to gather at least 15 real groups (paginating through Telegram's search) and merges new unique ones into the results list. Broadcast channels are excluded — only groups with "members" show up.
+2. **Results persist**: running a second keyword does NOT clear the first keyword's results — everything accumulates in one list. Use "Select All" / "Deselect All" or "Clear All Results" to manage the list yourself.
+3. **Join Selected**: tick the groups you want, click "Join Selected & Add as Targets" — joins them one at a time (1.5s gap) using your own account (TG_SESSION), and adds each to Targets.
+4. **Compose**: write your post text and optionally attach an image (sent as a photo with caption).
+5. **Post to Targets**: "Post Now to All Targets" sends once immediately. "Start Auto-Posting" repeats automatically, one target every 3 minutes, up to 15 per run, with a visible countdown.
+6. **History**: every join and post attempt (success or failure) is recorded with a timestamp. Click "Clear History" to wipe it whenever you like.
 
-## Important — read before use
-- Auto-join uses your own Telegram account to join public groups, exactly as if you tapped "Join" yourself. Joining many groups quickly can trigger Telegram's spam/flood protections — the tool waits 1.5s between joins, but avoid running many searches back-to-back in a short time.
-- The Bot API can only post in a group/channel if the bot has separately been added there with permission to send messages. Auto-join only makes your user account a member — it does not grant the bot posting rights, and some groups require admin approval for bots.
-- Use this only for groups/channels you manage or have admin permission to post in. Do not use it to message individual members directly or contact people who haven't asked to be contacted — that violates Telegram's Terms of Service and risks your account/bot being banned.
-- The 3-minute posting cycle and countdown run only while the browser tab stays open; closing it stops future posts until you reopen and press START again.
+## Important notes
+- Image size: Telegram photos should stay under a few MB; very large images may fail or time out.
+- The Bot API can only post in a group if the bot has separately been added there with permission to send messages. Joining with your user account does not grant the bot posting rights — some groups also require admin approval for bots.
+- Auto-join and continuous search use your own Telegram account. Avoid leaving "Start Searching" running for very long stretches or joining large numbers of groups quickly — Telegram's spam/flood protections can temporarily restrict the account.
+- Use this only for groups you manage or have permission to post in. Do not use it to message individual members directly or contact people who haven't asked to be contacted.
+- The search loop, countdown, and auto-posting cycle only run while the browser tab stays open.
